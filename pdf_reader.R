@@ -24,14 +24,19 @@ ui <- fluidPage(
       radioButtons("auto_manual_columns", label = h5("Define columns automatically or manually?"),
                    choices = list("Automatic" = 1, "Manual" = 2), 
                    selected = 1),
+      conditionalPanel("input.auto_manual_columns == 2", radioButtons("number_headers", label = h3("Select number of header colums"),
+                                                                choices = list(1, 2, 3), 
+                                                                selected = 1)),
+                       
       conditionalPanel("output.fileUploaded != 0", uiOutput("header_column")),
-      conditionalPanel("input.auto_manual_columns == 1", textInput("column_number", label = h5("Number of divisions"), value = 2)),
+      textInput("column_number", label = h5("Number of divisions"), value = 2),
       sliderInput("row_height_slider", 
                   label = h5("Select to account for smaller or taller rows"), 
                   min = 0, 
                   max = 4,
                   step = 0.1,
                   value = 1),
+      conditionalPanel("input.auto_manual_columns == 2", textInput("header_rows", label = h5("Number of rows to include in headers"), value = 1)),
       textInput("trim_top", label = h5("Number of rows to trim from top"), value = 0),
       textInput("trim_bottom", label = h5("Number of rows to trim from bottom"), value = 0),
       # Horizontal line ----
@@ -76,12 +81,20 @@ server <- function(input, output) {
   })
   
   output$header_column = renderUI({
+    if(input$auto_manual_columns == 1){
     sliderInput("header_column_slider", 
                 label = h5("Select width of header column"), 
                 min = 2, 
                 max = max(select_table()$x), 
                 round = T,
-                value = 20)
+                value = 20)}
+    else{
+      sliderInput("header_column_slider", 
+                  label = h5("Select width of header columns"), 
+                  min = 2, 
+                  max = max(select_table()$x), 
+                  round = T,
+                  value = 20)}
   })
   
   ##Numeric values from user input
@@ -95,13 +108,15 @@ server <- function(input, output) {
   row_height <- reactive({as.numeric(input$row_height_slider)})
   #Trim values:
   top_trim <- reactive({as.numeric(input$trim_top)+1})
-  bottom_trim <- reactive({nrow(processed_pdf())-as.numeric(input$trim_bottom)})
-  
+    ##Number of header columns
+  header_column_number <- reactive({as.numeric(input$number_headers)})
+  ##Number of header rows
+  header_row_number <- reactive({as.numeric(input$header_rows)})
   
   ##Output datatable of raw data  
-  total_rows = reactive({processed_pdf() %>% nrow()})
+  total_rows = reactive({trimmed_pdf() %>% nrow()})
   output$pdf_output_file <- renderDT({
-    datatable(trimmed_pdf(), rownames = FALSE,
+    datatable(custom_pdf(), rownames = FALSE,
               options = list(
                 scrollX = TRUE,
                 scrollY = TRUE,
@@ -119,18 +134,17 @@ server <- function(input, output) {
   #Select table to read
   select_table = reactive({as_tibble(raw_pdf()[[table_number_value()]])})  
   
-  ##Data processing
+  ##Data processing; simple
   processed_pdf = reactive({
     validate(
       need(input$pdf_input_file != "", "Please select a PDF"))
     ##Identify columns of interest
-    if(input$auto_manual_columns == 1){
-    find_cols <- seq(from = header_column_value(), to = max(select_table()$x), length.out = column_number_auto())}
+    find_cols <- seq(from = header_column_value(), to = max(select_table()$x), length.out = column_number_auto())
     
     #Calculate number of rows
     row_n <- round(length(unique(select_table()$y))/row_height(), 0)+1
     ##Identify rows of interest
-    find_rows <- seq(from = min(select_table()$y), to = max(select_table()$y), length.out = row_n)
+    find_rows <- seq(from = min(select_table()$y), to = max(select_table()$y), length.out = row_n+1)
     
     ###Split into columns
     data <-  select_table() %>% 
@@ -142,20 +156,63 @@ server <- function(input, output) {
       ungroup() %>%
       select(row, text, col) %>%
       unique() %>%
-      spread(col, text) 
-  
+      spread(col, text) %>%
+      select(-row)
     }) #end of reactive
   
+  ##Data processing; customised
+  custom_pdf = reactive({
+    validate(
+      need(input$pdf_input_file != "", "Please select a PDF"))
+    ##Identify columns of interest
+    header_cols <- seq(from = 1, to = header_column_value(), length.out = header_column_number()+1)  
+    find_cols <- seq(from = header_column_value()+1, to = max(select_table()$x), length.out = column_number_auto() - header_column_number())
+    
+    ##Filter out header rows before processing
+    new_y_vals <- unique(select_table()$y) #%>% sort()
+    new_y_vals <- if(top_trim()==1){new_y_vals}
+    else{new_y_vals[-(1:(top_trim()-1))]}
+    
+    ##Identify header rows
+    header_y_vals <- new_y_vals[1:header_row_number()]
+    find_header_rows <- c(1, max(header_y_vals))
+    #Identify non-header rows
+    non_header_y_vals <- new_y_vals[(header_row_number()+1):length(new_y_vals)]
+    #Calculate number of rows
+    row_n <- round(length(non_header_y_vals)/row_height(), 0)+1
+    find_rows <- seq(from = min(non_header_y_vals), to = max(non_header_y_vals), length.out = row_n)
+    
+      ###Split into columns
+    data <-  select_table() %>% 
+      filter(y %in% new_y_vals) %>%
+      mutate(col = cut(x, breaks = c(header_cols, find_cols, Inf))) %>% 
+      mutate(row = cut(y, breaks = c(find_header_rows, find_rows, Inf))) %>%
+      arrange(col, row) %>%
+      group_by(col, row) %>%
+      mutate(text = paste(text, collapse = " ")) %>%
+      ungroup() %>%
+      select(row, text, col) %>%
+      unique() %>%
+      spread(col, text) %>%
+      select(-row) 
+    
+  }) #end of reactive
+  
   trimmed_pdf = reactive({
-    data <- processed_pdf()[top_trim():bottom_trim(),]
-    data <- Filter(function(x)!all(is.na(x)), data)
-    data
-    })
+    if(input$auto_manual_columns == 1){
+      data <- processed_pdf()
+      data <- data[top_trim():(nrow(processed_pdf())-as.numeric(input$trim_bottom)),]
+      data <- Filter(function(x)!all(is.na(x)), data)
+      data
+    }
+    else{data <- custom_pdf()
+    data <- data[1:(nrow(custom_pdf())-as.numeric(input$trim_bottom)),]}
+  })
   
   output$dl_oilseed <- downloadHandler(
     filename = function() {"read_pdf.xlsx"},
     content = function(file) {write_xlsx(list(trimmed_pdf()), path = file)}
   )
-  }
+}
 # Run the app ----
 shinyApp(ui, server)
