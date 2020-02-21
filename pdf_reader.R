@@ -1,4 +1,3 @@
-setwd("L:/Prices/Dashboards/PDF_reading")
 if (!require("pacman")) install.packages("pacman")
 library(pacman)
 pacman::p_load(dplyr, data.table, pdftools, shiny, writexl, DT, tidyr, tibble)
@@ -21,8 +20,8 @@ ui <- fluidPage(
                 accept = c("pdf",
                            ".pdf")),
       conditionalPanel("output.fileUploaded != 0", uiOutput("table_selector")),
-      radioButtons("auto_manual_columns", label = h5("Define columns automatically or manually?"),
-                   choices = list("Automatic" = 1, "Manual" = 2), 
+      radioButtons("auto_manual_columns", label = h5("Column width setting?"),
+                   choices = list("Automatic" = 1, "Advanced" = 2), 
                    selected = 1),
       conditionalPanel("input.auto_manual_columns == 2", radioButtons("number_headers", label = h3("Select number of header colums"),
                                                                 choices = list(1, 2, 3), 
@@ -44,7 +43,8 @@ ui <- fluidPage(
       hr(),
       
       ##download results
-     downloadButton("dl_oilseed", "Download")
+      downloadButton("dl_xl", "Download xlsx"),
+      downloadButton("dl_csv", "Download csv")
      ), #End of sidebar Panel
     
     # Main panel for displaying outputs ----
@@ -209,9 +209,14 @@ server <- function(input, output) {
     data <- data[1:(nrow(custom_pdf())-as.numeric(input$trim_bottom)),]}
   })
   
-  output$dl_oilseed <- downloadHandler(
+  output$dl_xl <- downloadHandler(
     filename = function() {"read_pdf.xlsx"},
     content = function(file) {write_xlsx(list(trimmed_pdf()), path = file)}
+  )
+  
+  output$dl_csv <- downloadHandler(
+    filename = function() {"read_pdf.csv"},
+    content = function(file) {write.csv(trimmed_pdf(), file = file, row.names = F)}
   )
 }
 # Run the app ----
