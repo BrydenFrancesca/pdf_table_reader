@@ -22,10 +22,12 @@ ui <- fluidPage(
       conditionalPanel("output.fileUploaded != 0", uiOutput("table_selector")),
       radioButtons("auto_manual_columns", label = h5("Column width setting?"),
                    choices = list("Automatic" = 1, "Advanced" = 2), 
-                   selected = 1),
-      conditionalPanel("input.auto_manual_columns == 2", radioButtons("number_headers", label = h3("Select number of header colums"),
+                   selected = 1,
+                   inline = T),
+      conditionalPanel("input.auto_manual_columns == 2", radioButtons("number_headers", label = h5("Select number of header colums"),
                                                                 choices = list(1, 2, 3), 
-                                                                selected = 1)),
+                                                                selected = 1,
+                                                                inline = T)),
                        
       conditionalPanel("output.fileUploaded != 0", uiOutput("header_column")),
       textInput("column_number", label = h5("Number of divisions"), value = 2),
@@ -38,6 +40,7 @@ ui <- fluidPage(
       conditionalPanel("input.auto_manual_columns == 2", textInput("header_rows", label = h5("Number of rows to include in headers"), value = 1)),
       textInput("trim_top", label = h5("Number of rows to trim from top"), value = 0),
       textInput("trim_bottom", label = h5("Number of rows to trim from bottom"), value = 0),
+      checkboxInput("set_col_names", label = "Use header row as column names?", value = FALSE),
       # Horizontal line ----
       hr(),
       hr(),
@@ -113,17 +116,7 @@ server <- function(input, output) {
   ##Number of header rows
   header_row_number <- reactive({as.numeric(input$header_rows)})
   
-  ##Output datatable of raw data  
-  total_rows = reactive({trimmed_pdf() %>% nrow()})
-  output$pdf_output_file <- renderDT({
-    datatable(custom_pdf(), rownames = FALSE,
-              options = list(
-                scrollX = TRUE,
-                scrollY = TRUE,
-                pageLength = total_rows()))
-  })
-  
-  ##Read in pdf
+   ##Read in pdf
   raw_pdf = reactive({
     pdf_data(input$pdf_input_file$datapath)
   })
@@ -209,14 +202,36 @@ server <- function(input, output) {
     data <- data[1:(nrow(custom_pdf())-as.numeric(input$trim_bottom)),]}
   })
   
+  ##Select column names
+  final_data = reactive({
+  if(input$set_col_names==1){
+    data <- trimmed_pdf()
+    colnames(data) <- data[1,]
+    data <- data[-1,]
+    
+  } else{
+    trimmed_pdf()
+  }
+  })
+  
+  ##Output datatable of raw data  
+  total_rows = reactive({final_data() %>% nrow()})
+  output$pdf_output_file <- renderDT({
+    datatable(custom_pdf(), rownames = FALSE,
+              options = list(
+                scrollX = TRUE,
+                scrollY = TRUE,
+                pageLength = total_rows()))
+  })
+  
   output$dl_xl <- downloadHandler(
     filename = function() {"read_pdf.xlsx"},
-    content = function(file) {write_xlsx(list(trimmed_pdf()), path = file)}
+    content = function(file) {write_xlsx(list(final_data()), path = file)}
   )
   
   output$dl_csv <- downloadHandler(
     filename = function() {"read_pdf.csv"},
-    content = function(file) {write.csv(trimmed_pdf(), file = file, row.names = F)}
+    content = function(file) {write.csv(final_data(), file = file, row.names = F)}
   )
 }
 # Run the app ----
