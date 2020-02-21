@@ -217,7 +217,7 @@ server <- function(input, output) {
   ##Output datatable of raw data  
   total_rows = reactive({final_data() %>% nrow()})
   output$pdf_output_file <- renderDT({
-    datatable(custom_pdf(), rownames = FALSE,
+    datatable(final_data(), rownames = FALSE,
               options = list(
                 scrollX = TRUE,
                 scrollY = TRUE,
