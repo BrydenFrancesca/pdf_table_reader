@@ -21,7 +21,7 @@ ui <- fluidPage(
                            ".pdf")),
       conditionalPanel("output.fileUploaded != 0", uiOutput("table_selector")),
       radioButtons("auto_manual_columns", label = h5("Column width setting?"),
-                   choices = list("Automatic" = 1, "Advanced" = 2), 
+                   choices = list("Automatic" = 1, "Advanced" = 2, "From file" = 3), 
                    selected = 1,
                    inline = T),
       conditionalPanel("input.auto_manual_columns == 2", radioButtons("number_headers", label = h5("Select number of header colums"),
@@ -31,16 +31,18 @@ ui <- fluidPage(
                        
       conditionalPanel("output.fileUploaded != 0", uiOutput("header_column")),
       textInput("column_number", label = h5("Number of divisions"), value = 2),
-      sliderInput("row_height_slider", 
+      conditionalPanel("input.auto_manual_columns == 2", sliderInput("row_height_slider", 
                   label = h5("Select to account for smaller or taller rows"), 
                   min = 0, 
                   max = 4,
                   step = 0.1,
-                  value = 1),
+                  value = 1)),
       conditionalPanel("input.auto_manual_columns == 2", textInput("header_rows", label = h5("Number of rows to include in headers"), value = 1)),
       textInput("trim_top", label = h5("Number of rows to trim from top"), value = 0),
       textInput("trim_bottom", label = h5("Number of rows to trim from bottom"), value = 0),
-      checkboxInput("set_col_names", label = "Use header row as column names?", value = FALSE),
+      conditionalPanel("input.auto_manual_columns == 2", checkboxInput("set_col_names", label = "Use header row as column names?", value = FALSE)),
+      checkboxInput("keep_params", label = "Download a copy of these parameters?", value = FALSE),
+    
       # Horizontal line ----
       hr(),
       hr(),
@@ -91,7 +93,7 @@ server <- function(input, output) {
                 max = max(select_table()$x), 
                 round = T,
                 value = 20)}
-    else{
+    else if(input$auto_manual_columns == 2){
       sliderInput("header_column_slider", 
                   label = h5("Select width of header columns"), 
                   min = 2, 
@@ -198,7 +200,8 @@ server <- function(input, output) {
       data <- Filter(function(x)!all(is.na(x)), data)
       data
     }
-    else{data <- custom_pdf()
+    else if(input$auto_manual_columns == 2){
+      data <- custom_pdf()
     data <- data[1:(nrow(custom_pdf())-as.numeric(input$trim_bottom)),]}
   })
   
@@ -224,9 +227,14 @@ server <- function(input, output) {
                 pageLength = total_rows()))
   })
   
+  ##Save parameters from advanced manipulation
+  params = reactive({
+   tibble("table_number" = table_number_value(), "header_number" = header_column_value()) 
+  })
+  
   output$dl_xl <- downloadHandler(
     filename = function() {"read_pdf.xlsx"},
-    content = function(file) {write_xlsx(list(final_data()), path = file)}
+    content = function(file) {write_xlsx(list("Data" = final_data(), "Parameters" = params()), path = file)}
   )
   
   output$dl_csv <- downloadHandler(
