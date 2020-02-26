@@ -14,33 +14,50 @@ ui <- fluidPage(
     # Sidebar panel for inputs ----
     sidebarPanel(width = 2,
       
-      # Input: Select a file ----
+      # Inputs
+      #Select PDF file
       fileInput("pdf_input_file", "Choose PDF of current month data",
                 multiple = F,
                 accept = c("pdf",
                            ".pdf")),
-      conditionalPanel("output.fileUploaded != 0", uiOutput("table_selector")),
-      radioButtons("auto_manual_columns", label = h5("Column width setting?"),
+      #Slider that appears when file is uploaded on manual setting
+      conditionalPanel("output.fileUploaded != 0 & input.auto_manual_columns != 3", uiOutput("table_selector")),
+      #Buttons to choose automatic, manual or from file settings
+      radioButtons("auto_manual_columns", label = h5("Table settings?"),
                    choices = list("Automatic" = 1, "Advanced" = 2, "From file" = 3), 
                    selected = 1,
                    inline = T),
+      #Excel parameter file uploader that appears when using parameters
+      conditionalPanel("input.auto_manual_columns == 3",fileInput("params_input_file", "Choose Excel files including parameters",
+                multiple = F,
+                accept = c("xlsx",
+                           ".xlsx"))),
+      #Buttons to select number of headers in advanced mode
       conditionalPanel("input.auto_manual_columns == 2", radioButtons("number_headers", label = h5("Select number of header colums"),
                                                                 choices = list(1, 2, 3), 
                                                                 selected = 1,
                                                                 inline = T)),
                        
-      conditionalPanel("output.fileUploaded != 0", uiOutput("header_column")),
-      textInput("column_number", label = h5("Number of divisions"), value = 2),
+      #Slider to select size of header 
+      conditionalPanel("output.fileUploaded != 0 & input.auto_manual_columns != 3", uiOutput("header_column")),
+      #Input to select number of columns
+      conditionalPanel ("input.auto_manual_columns != 3", textInput("column_number", label = h5("Number of divisions"), value = 2)),
+      #Input to select row height
       conditionalPanel("input.auto_manual_columns == 2", sliderInput("row_height_slider", 
                   label = h5("Select to account for smaller or taller rows"), 
                   min = 0, 
                   max = 4,
                   step = 0.1,
                   value = 1)),
+      #Input to select number of header rows
       conditionalPanel("input.auto_manual_columns == 2", textInput("header_rows", label = h5("Number of rows to include in headers"), value = 1)),
-      textInput("trim_top", label = h5("Number of rows to trim from top"), value = 0),
-      textInput("trim_bottom", label = h5("Number of rows to trim from bottom"), value = 0),
+      #Input to select rows trimmed from top
+      conditionalPanel ("input.auto_manual_columns != 3",textInput("trim_top", label = h5("Number of rows to trim from top"), value = 0)),
+      #Input to select rows trimmed from bottom
+      conditionalPanel ("input.auto_manual_columns != 3",textInput("trim_bottom", label = h5("Number of rows to trim from bottom"), value = 0)),
+      #Input to use column headers as row names
       conditionalPanel("input.auto_manual_columns == 2", checkboxInput("set_col_names", label = "Use header row as column names?", value = FALSE)),
+      #Checkbox to download a copy of advanced parameters
       checkboxInput("keep_params", label = "Download a copy of these parameters?", value = FALSE),
     
       # Horizontal line ----
@@ -229,13 +246,22 @@ server <- function(input, output) {
   
   ##Save parameters from advanced manipulation
   params = reactive({
-   tibble("table_number" = table_number_value(), "header_number" = header_column_value()) 
+   tibble("table_number" = table_number_value(), "header_number" = header_column_value(), "row_height" = row_height(), "top_trim" = top_trim(), 
+          "header_column_number" = header_column_number(), "header_row_number" = header_row_number()) 
+  })
+  
+  
+  #Download file with or without parameters
+  file_contents <- reactive({
+    if(input$keep_params == 1){
+      list("Data" = final_data(), "Parameters" = params())}
+      else{list("Data" = final_data())}
   })
   
   output$dl_xl <- downloadHandler(
     filename = function() {"read_pdf.xlsx"},
-    content = function(file) {write_xlsx(list("Data" = final_data(), "Parameters" = params()), path = file)}
-  )
+    content = function(file) {write_xlsx(file_contents(), path = file)}
+    )
   
   output$dl_csv <- downloadHandler(
     filename = function() {"read_pdf.csv"},
