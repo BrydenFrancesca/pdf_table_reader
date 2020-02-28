@@ -1,6 +1,6 @@
 if (!require("pacman")) install.packages("pacman")
 library(pacman)
-pacman::p_load(dplyr, data.table, pdftools, shiny, writexl, DT, tidyr, tibble)
+pacman::p_load(dplyr, data.table, pdftools, shiny, writexl, DT, tidyr, tibble, readxl)
 
 # Define UI for data upload app ----
 ui <- fluidPage(
@@ -28,7 +28,7 @@ ui <- fluidPage(
                    selected = 1,
                    inline = T),
       #Excel parameter file uploader that appears when using parameters
-      conditionalPanel("input.auto_manual_columns == 3",fileInput("params_input_file", "Choose Excel files including parameters",
+      conditionalPanel("input.auto_manual_columns == 3",fileInput("params_input_file", "Choose Excel file including parameters",
                 multiple = F,
                 accept = c("xlsx",
                            ".xlsx"))),
@@ -58,7 +58,7 @@ ui <- fluidPage(
       #Input to use column headers as row names
       conditionalPanel("input.auto_manual_columns == 2", checkboxInput("set_col_names", label = "Use header row as column names?", value = FALSE)),
       #Checkbox to download a copy of advanced parameters
-      checkboxInput("keep_params", label = "Download a copy of these parameters?", value = FALSE),
+      checkboxInput("keep_params", label = "Download a copy of these parameters?", value = TRUE),
     
       # Horizontal line ----
       hr(),
@@ -117,6 +117,11 @@ server <- function(input, output) {
                   max = max(select_table()$x), 
                   round = T,
                   value = 20)}
+  })
+  
+  #Read in parameters
+  raw_params = reactive({
+    read_excel(input$params_input_file$datapath, sheet = "Parameters", col_names = T)
   })
   
   ##Numeric values from user input
